@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stock Cal - Stock Market Calculator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-7xl mx-auto bg-white p-6 rounded-lg shadow-lg">
+    <h1 class="text-3xl font-bold text-purple-700 mb-6 text-center">📊 Stock Cal - Stock Market Calculator</h1>
+
+    <!-- Brokerage & Tax Settings -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="font-semibold">Brokerage (%)</label>
+        <input id="brokerage" type="number" value="0.05" step="0.01" class="w-full p-2 border rounded" />
+      </div>
+      <div>
+        <label class="font-semibold">Capital Gains Tax (%)</label>
+        <input id="tax" type="number" value="15" step="0.01" class="w-full p-2 border rounded" />
+      </div>
+    </div>
+
+    <!-- Stock Rows -->
+    <div id="stockList" class="space-y-4">
+      <!-- Template Stock Row -->
+    </div>
+
+    <button onclick="addStockRow()" class="mt-4 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">
+      ➕ Add Stock
+    </button>
+
+    <!-- Export and Total -->
+    <div class="mt-6 flex flex-wrap gap-4 justify-between items-center">
+      <div id="totals" class="text-sm font-medium"></div>
+      <div class="space-x-2">
+        <button onclick="exportCSV()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">📥 Export CSV</button>
+        <button onclick="exportPDF()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">📄 Export PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let rowId = 0;
+    const stockList = document.getElementById("stockList");
+
+    function addStockRow() {
+      const id = `stock-${rowId++}`;
+      const row = document.createElement("div");
+      row.className = "grid grid-cols-6 gap-2 items-end";
+      row.innerHTML = `
+        <input type="text" placeholder="Stock Name" class="col-span-1 p-2 border rounded" />
+        <input type="number" placeholder="Buy Price" step="0.01" class="col-span-1 p-2 border rounded" />
+        <input type="number" placeholder="Qty" class="col-span-1 p-2 border rounded" />
+        <input type="number" placeholder="Current Price" step="0.01" class="col-span-1 p-2 border rounded" />
+        <input type="number" placeholder="Target Price" step="0.01" class="col-span-1 p-2 border rounded" />
+        <button onclick="removeRow(this)" class="bg-red-500 text-white px-2 py-1 rounded">✖</button>
+      `;
+      stockList.appendChild(row);
+      calculateTotals();
+      row.querySelectorAll("input").forEach(input => input.addEventListener("input", calculateTotals));
+    }
+
+    function removeRow(button) {
+      button.parentElement.remove();
+      calculateTotals();
+    }
+
+    function calculateTotals() {
+      const rows = stockList.children;
+      const brokerage = parseFloat(document.getElementById("brokerage").value) / 100;
+      const tax = parseFloat(document.getElementById("tax").value) / 100;
+
+      let totalInvestment = 0;
+      let totalCurrentValue = 0;
+      let totalTargetValue = 0;
+      let totalNetProfit = 0;
+
+      [...rows].forEach(row => {
+        const [name, buyInput, qtyInput, currInput, targetInput] = row.querySelectorAll("input");
+
+        const buy = parseFloat(buyInput.value) || 0;
+        const qty = parseFloat(qtyInput.value) || 0;
+        const current = parseFloat(currInput.value) || 0;
+        const target = parseFloat(targetInput.value) || 0;
+
+        const invest = buy * qty;
+        const currVal = current * qty;
+        const targetVal = target * qty;
+
+        const grossProfit = currVal - invest;
+        const brokerageFee = (buy + current) * qty * brokerage;
+        const taxableGain = Math.max(grossProfit - brokerageFee, 0);
+        const taxPaid = taxableGain * tax;
+        const netProfit = grossProfit - brokerageFee - taxPaid;
+
+        totalInvestment += invest;
+        totalCurrentValue += currVal;
+        totalTargetValue += targetVal;
+        totalNetProfit += netProfit;
+      });
+
+      const gain = totalCurrentValue - totalInvestment;
+      const percentGain = (gain / totalInvestment) * 100;
+
+      document.getElementById("totals").innerHTML = `
+        📌 <strong>Total Investment:</strong> ₹${totalInvestment.toFixed(2)} |
+        <strong>Current Value:</strong> ₹${totalCurrentValue.toFixed(2)} |
+        <strong>Net P/L:</strong> ₹${totalNetProfit.toFixed(2)} (${percentGain.toFixed(2)}%)
+      `;
+    }
+
+    function exportCSV() {
+      let csv = "Stock Name,Buy Price,Qty,Current Price,Target Price\n";
+      const rows = stockList.children;
+      [...rows].forEach(row => {
+        const [name, buy, qty, curr, target] = row.querySelectorAll("input");
+        csv += `${name.value},${buy.value},${qty.value},${curr.value},${target.value}\n`;
+      });
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "stock_report.csv");
+      link.click();
+    }
+
+    function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(12);
+      doc.text("Stock Cal - Report", 10, 10);
+      let y = 20;
+
+      const rows = stockList.children;
+      [...rows].forEach((row, i) => {
+        const [name, buy, qty, curr, target] = row.querySelectorAll("input");
+        doc.text(
+          `${i + 1}. ${name.value}: Buy ₹${buy.value}, Qty ${qty.value}, Current ₹${curr.value}, Target ₹${target.value}`,
+          10,
+          y
+        );
+        y += 10;
+      });
+
+      doc.save("stock_cal_report.pdf");
+    }
+
+    // Initial row
+    addStockRow();
+  </script>
+</body>
+</html>
+
